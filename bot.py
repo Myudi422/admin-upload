@@ -4,6 +4,7 @@ from sqlalchemy import func, distinct
 from sqlalchemy.orm import aliased
 from firebase_admin import credentials, messaging, initialize_app
 import re
+import httpx
 import requests
 
 # Import the database models
