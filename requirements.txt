@@ -4,3 +4,4 @@ sqlalchemy
 pymysql
 firebase-admin
 requests
+httpx
