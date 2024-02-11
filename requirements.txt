@@ -3,4 +3,4 @@ tgcrypto
 sqlalchemy
 pymysql
 firebase-admin
-request
+requests
