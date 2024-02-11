@@ -1,6 +1,8 @@
 from pyrogram import Client, filters
 from pyrogram.types import ReplyKeyboardMarkup, KeyboardButton
 from sqlalchemy import func, distinct
+import re
+
 
 # Import the database models
 from database import Jadwal, AnilistData, Nonton, SessionLocal, engine, Base
@@ -129,13 +131,17 @@ async def text_handler(client, message):
             try:
                 for episode_number in range(start_episode, end_episode + 1):
                     for i in range(0, len(video_info), 2):
-                        video_url = f"{video_info[i]}{episode_number}"
-                        resolusi = video_info[i + 1]
+                        # Extract numerical part from the URL using regular expression
+                        url_match = re.search(r'\d+', video_info[i])
+                        if url_match:
+                            numerical_part = url_match.group()
+                            video_url = f"{video_info[i]}{numerical_part + episode_number}"
+                            resolusi = video_info[i + 1]
 
-                        # Insert into the Nonton table for each pair of video_url and resolusi
-                        new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                        session.add(new_nonton)
-                        session.commit()
+                            # Insert into the Nonton table for each pair of video_url and resolusi
+                            new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
+                            session.add(new_nonton)
+                            session.commit()
 
                 await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
             finally:
