@@ -135,7 +135,7 @@ async def text_handler(client, message):
                     numerical_part = int(url_match.group())
 
                     for episode_number in range(start_episode, end_episode + 1):
-                        video_url = f"{video_info[0]}{numerical_part + episode_number - 1}"
+                        video_url = f"{video_info[0]}{numerical_part + episode_number - start_episode}"
                         resolusi = video_info[1]
 
                         # Insert into the Nonton table for each pair of video_url and resolusi
