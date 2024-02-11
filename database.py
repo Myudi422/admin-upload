@@ -1,161 +1,38 @@
-from pyrogram import Client, filters
-from pyrogram.types import ReplyKeyboardMarkup, KeyboardButton
-from sqlalchemy import func, distinct
-from sqlalchemy.orm import aliased
-from firebase_admin import credentials, messaging, initialize_app
-import re
-import requests
+from sqlalchemy import create_engine, Column, Integer, String, MetaData, ForeignKey, func, distinct
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-# Import the database models
-from database import Jadwal, AnilistData, Nonton, UsersWeb, SessionLocal, engine, Base
+DATABASE_URL = "mysql+pymysql://ccgnimex:aaaaaaac@188.166.231.207/ccgnimex"
+engine = create_engine(DATABASE_URL)
+Base = declarative_base()
 
-API_ID = "7120601"
-API_HASH = "aebd45c2c14b36c2c91dec3cf5e8ee9a"
-BOT_TOKEN = "1920905087:AAG_xCvsdjxVu8VUDt9s4JhD22ND-UIJttQ"
+class Jadwal(Base):
+    __tablename__ = 'jadwal'
+    id = Column(Integer, primary_key=True, index=True)
+    hari = Column(String, index=True)
+    anime_id = Column(Integer, ForeignKey("anilist_data.anime_id"))
 
-# Initialize Firebase Admin SDK
-cred = credentials.Certificate("servis.json")
-firebase_app = initialize_app(cred)
+class AnilistData(Base):
+    __tablename__ = 'anilist_data'
+    anime_id = Column(Integer, primary_key=True, index=True)
+    judul = Column(String)
+    image = Column(String)
 
-app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+class Nonton(Base):
+    __tablename__ = "nonton"
 
-# Fungsi handler untuk perintah /start
-@app.on_message(filters.command("admin"))
-async def start_command(client, message):
-    # Create buttons for "Manage" and "Jadwal"
-    keyboard = [
-        [KeyboardButton("Manage"), KeyboardButton("Jadwal")]
-    ]
+    id = Column(Integer, primary_key=True, index=True)
+    anime_id = Column(Integer)
+    episode_number = Column(Integer)
+    title = Column(String)  # Add this line for the title field
+    video_url = Column(String)
+    resolusi = Column(String)
 
-    # Konversi keyboard menjadi objek ReplyKeyboardMarkup
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await message.reply_text("Pilih opsi:", reply_markup=reply_markup)
+class UsersWeb(Base):
+    __tablename__ = 'users_web'
 
-# Fungsi handler untuk tombol "Manage"
-@app.on_message(filters.regex(r'^Manage$'))
-async def manage_button_handler(client, message):
-    await message.reply_text("Manage button clicked! Implement your manage logic here.")
+    id = Column(Integer, primary_key=True, index=True)
+    fcm_token = Column(String, unique=True, index=True)
 
-@app.on_message(filters.command("add"))
-async def add_command(client, message):
-    # Extract the anime_id from the message text
-    parts = message.text.split()
-    if len(parts) == 2:
-        anime_id = parts[1]
-
-        # Send a POST request to the specified URL with the anime_id
-        url = "https://ccgnimex.my.id/v2/android/scrapping/index.php"
-        data = {"anime_id": anime_id}
-
-        try:
-            response = requests.post(url, data=data)
-            if response.status_code == 200:
-                await message.reply_text(f"Anime ID {anime_id} added successfully!")
-            else:
-                await message.reply_text(f"Failed to add Anime ID {anime_id}. Server returned status code {response.status_code}")
-        except Exception as e:
-            await message.reply_text(f"An error occurred: {str(e)}")
-
-    else:
-        await message.reply_text("Invalid command format. Use: '/add <anime_id>'")
-
-# Fungsi handler untuk tombol "Jadwal"
-@app.on_message(filters.regex(r'^Jadwal$'))
-async def jadwal_button_handler(client, message):
-    keyboard = [
-        ["Senin", "Selasa"],
-        ["Rabu", "Kamis"],
-        ["Jumat", "Sabtu"],
-        ["Minggu"]
-    ]
-
-    # Konversi keyboard menjadi objek ReplyKeyboardMarkup
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await message.reply_text("Pilih hari:", reply_markup=reply_markup)
-
-@app.on_message(filters.text)
-async def text_handler(client, message):
-    user_input = message.text.lower()
-
-    if user_input.startswith("upload"):
-        parts = user_input.split()
-
-        if len(parts) >= 4:
-            anime_id = parts[1]
-            start_episode = int(parts[2].split('-')[0])
-            end_episode = int(parts[2].split('-')[1])
-
-            session = SessionLocal()
-            try:
-                for episode_number in range(start_episode, end_episode + 1):
-                    for i in range(0, len(parts[3:]), 2):
-                        url_match = re.search(r'/(\d+)', parts[3 + i])
-                        if url_match:
-                            numerical_part = int(url_match.group(1))
-                            video_url = f"{parts[3 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[3 + i][url_match.end(1):]}"
-                            resolusi = parts[4 + i]
-
-                            # Insert into the Nonton table for each pair of video_url and resolusi
-                            new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                            session.add(new_nonton)
-                            session.commit()
-                        else:
-                            await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
-                            return
-
-                # Sending FCM notifications to users
-                send_fcm_notifications(anime_id, start_episode, end_episode)
-
-                if start_episode == end_episode:
-                    await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
-                else:
-                    await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
-
-            finally:
-                session.close()
-        else:
-            await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
-
-def send_fcm_notifications(anime_id, start_episode, end_episode=None):
-    session = SessionLocal()
-    try:
-        # Dapatkan token FCM dari tabel users_web
-        fcm_tokens = [str(token[0]) for token in session.query(UsersWeb.fcm_token).all()]
-
-        # Ambil judul dan link gambar anime dari AnilistData berdasarkan anime_id
-        anime_data = session.query(AnilistData.judul, AnilistData.image).filter(AnilistData.anime_id == anime_id).first()
-        if anime_data:
-            judul = anime_data.judul
-            image_url = anime_data.image if anime_data.image else None  # Gunakan None jika tidak ada gambar
-        else:
-            judul = f"Anime ID {anime_id}"  # Gunakan judul default jika tidak ditemukan
-            image_url = None  # Gunakan None jika tidak ada gambar
-
-        # Sesuaikan pesan notifikasi
-        if start_episode == end_episode or end_episode is None:
-            notification_body = f"Kami Baru upload untuk anime {judul}: Episode {start_episode}"
-        else:
-            notification_body = f"Kami Baru upload untuk anime {judul}: Episode {start_episode}-{end_episode}"
-
-        # Persiapkan objek notifikasi
-        notification = messaging.Notification(
-            title="[TEST NOTIF] - Update Terbaru!!",
-            body=notification_body,
-        )
-
-        # Tambahkan link gambar jika tersedia
-        if image_url:
-            notification.image = image_url
-
-        message = messaging.MulticastMessage(
-            tokens=fcm_tokens,
-            notification=notification,
-        )
-
-        # Kirim notifikasi
-        response = messaging.send_multicast(message)
-        print(f"Pemberitahuan FCM berhasil dikirim ke {len(fcm_tokens)} pengguna.")
-    except Exception as e:
-        print(f"Error mengirim pemberitahuan FCM: {e}")
-    finally:
-        session.close()
+Base.metadata.create_all(bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
