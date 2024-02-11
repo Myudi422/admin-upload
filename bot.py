@@ -123,17 +123,13 @@ async def text_handler(client, message):
         end_episode = int(episode_range[1])
         video_info = parts[3:]
 
-        # Pastikan jumlah elemen video_info adalah genap
+        # Validate that the number of video_info elements is even
         if len(video_info) % 2 == 0:
             session = SessionLocal()
             try:
-                # Loop menggunakan enumerate untuk mendapatkan angka terakhir dari setiap URL video
                 for episode_number, (video_url, resolusi) in enumerate(zip(video_info[::2], video_info[1::2]), start=start_episode):
-                    # Ekstrak angka terakhir dari URL video menggunakan filter dan isdigit
-                    last_number = int(''.join(filter(str.isdigit, video_url)))
-
-                    # Masukkan ke dalam tabel Nonton dengan nomor episode dan URL yang berurutan
-                    new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi, last_number=last_number)
+                    # Insert into the Nonton table with sequential episode numbers and URLs
+                    new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
                     session.add(new_nonton)
                     session.commit()
 
