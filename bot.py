@@ -43,19 +43,19 @@ async def add_command(client, message):
     if len(parts) == 2:
         anime_id = parts[1]
 
-        # Send a POST request to the specified URL with the anime_id
+        # Send a POST request to the specified URL with the anime_id using httpx
         url = "https://ccgnimex.my.id/v2/android/scrapping/index.php"
         data = {"anime_id": anime_id}
 
         try:
-            response = requests.post(url, data=data)
-            if response.status_code == 200:
-                await message.reply_text(f"Anime ID {anime_id} added successfully!")
-            else:
-                await message.reply_text(f"Failed to add Anime ID {anime_id}. Server returned status code {response.status_code}")
+            async with httpx.AsyncClient() as client:
+                response = await client.post(url, data=data)
+                if response.status_code == 200:
+                    await message.reply_text(f"Anime ID {anime_id} added successfully!")
+                else:
+                    await message.reply_text(f"Failed to add Anime ID {anime_id}. Server returned status code {response.status_code}")
         except Exception as e:
             await message.reply_text(f"An error occurred: {str(e)}")
-
     else:
         await message.reply_text("Invalid command format. Use: '/add <anime_id>'")
 
