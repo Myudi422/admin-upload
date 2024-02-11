@@ -135,7 +135,7 @@ async def text_handler(client, message):
                         url_match = re.search(r'\d+', video_info[i])
                         if url_match:
                             numerical_part = url_match.group()
-                            video_url = f"{video_info[i]}{numerical_part + episode_number}"
+                            video_url = f"{video_info[i]}{numerical_part}{episode_number}"
                             resolusi = video_info[i + 1]
 
                             # Insert into the Nonton table for each pair of video_url and resolusi
