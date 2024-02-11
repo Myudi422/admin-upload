@@ -1,15 +1,21 @@
 from pyrogram import Client, filters
 from pyrogram.types import ReplyKeyboardMarkup, KeyboardButton
 from sqlalchemy import func, distinct
+from sqlalchemy.orm import aliased
+from firebase_admin import credentials, messaging, initialize_app
 import re
-
+import requests
 
 # Import the database models
-from database import Jadwal, AnilistData, Nonton, SessionLocal, engine, Base
+from database import Jadwal, AnilistData, Nonton, UsersWeb, SessionLocal, engine, Base
 
 API_ID = "7120601"
 API_HASH = "aebd45c2c14b36c2c91dec3cf5e8ee9a"
 BOT_TOKEN = "1920905087:AAG_xCvsdjxVu8VUDt9s4JhD22ND-UIJttQ"
+
+# Initialize Firebase Admin SDK
+cred = credentials.Certificate("servis.json")
+firebase_app = initialize_app(cred)
 
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -30,6 +36,29 @@ async def start_command(client, message):
 async def manage_button_handler(client, message):
     await message.reply_text("Manage button clicked! Implement your manage logic here.")
 
+@app.on_message(filters.command("add"))
+async def add_command(client, message):
+    # Extract the anime_id from the message text
+    parts = message.text.split()
+    if len(parts) == 2:
+        anime_id = parts[1]
+
+        # Send a POST request to the specified URL with the anime_id
+        url = "https://ccgnimex.my.id/v2/android/scrapping/index.php"
+        data = {"anime_id": anime_id}
+
+        try:
+            response = requests.post(url, data=data)
+            if response.status_code == 200:
+                await message.reply_text(f"Anime ID {anime_id} added successfully!")
+            else:
+                await message.reply_text(f"Failed to add Anime ID {anime_id}. Server returned status code {response.status_code}")
+        except Exception as e:
+            await message.reply_text(f"An error occurred: {str(e)}")
+
+    else:
+        await message.reply_text("Invalid command format. Use: '/add <anime_id>'")
+
 # Fungsi handler untuk tombol "Jadwal"
 @app.on_message(filters.regex(r'^Jadwal$'))
 async def jadwal_button_handler(client, message):
@@ -44,113 +73,89 @@ async def jadwal_button_handler(client, message):
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await message.reply_text("Pilih hari:", reply_markup=reply_markup)
 
-# Fungsi handler untuk pesan teks
 @app.on_message(filters.text)
 async def text_handler(client, message):
-    # Tambahkan logika sesuai dengan pilihan pengguna
     user_input = message.text.lower()
 
-    if user_input in ["senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu"]:
-        session = SessionLocal()
-        try:
-            # Subquery untuk mendapatkan episode terbaru
-            subquery = (
-                session.query(
-                    Nonton.anime_id,
-                    func.max(Nonton.episode_number).label("latest_episode")
-                )
-                .group_by(Nonton.anime_id)
-                .subquery()
-            )
-
-            # Gabungkan tabel anilist_data dan nonton berdasarkan anime_id
-            jadwal_entries = (
-                session.query(distinct(AnilistData.judul), Nonton.episode_number, AnilistData.anime_id)
-                .join(Jadwal, Jadwal.anime_id == AnilistData.anime_id)
-                .join(subquery, subquery.c.anime_id == AnilistData.anime_id)
-                .outerjoin(Nonton, (subquery.c.anime_id == Nonton.anime_id) & (subquery.c.latest_episode == Nonton.episode_number))
-                .filter(Jadwal.hari == user_input)
-                .order_by(AnilistData.judul)
-                .all()
-            )
-
-            response_text = f"Jadwal anime untuk hari {user_input}:\n"
-            anime_keyboard = []
-
-            for judul_anime, episode_number, anime_id in jadwal_entries:
-                # Potong judul jika terlalu panjang
-                if len(judul_anime) > 25:
-                    judul_anime = judul_anime[:22] + "..."
-                
-                # Tambahkan informasi episode terbaru ke keyboard
-                if episode_number is not None:
-                    judul_anime += f" [{episode_number}]"
-
-                anime_keyboard.append([f"{anime_id} {judul_anime}"])
-
-                response_text += f"- Judul: {judul_anime} - Episode Terbaru: {episode_number}\n"
-        finally:
-            session.close()
-
-        # Tambahkan tombol "Kembali"
-        anime_keyboard.append(["Kembali"])
-
-        # Bagi pesan menjadi beberapa bagian jika terlalu panjang
-        max_message_length = 4096
-        chunks = [response_text[i:i+max_message_length] for i in range(0, len(response_text), max_message_length)]
-
-        for chunk in chunks:
-            reply_markup = ReplyKeyboardMarkup(anime_keyboard, resize_keyboard=True)
-            await message.reply_text(chunk, reply_markup=reply_markup)
-            
-    elif user_input == "kembali":
-        # Jika pengguna memilih "Kembali", tampilkan kembali menu pilih hari
-        keyboard = [
-            ["Senin", "Selasa"],
-            ["Rabu", "Kamis"],
-            ["Jumat", "Sabtu"],
-            ["Minggu"]
-        ]
-
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await message.reply_text("Pilih hari:", reply_markup=reply_markup)
-
-    elif user_input.startswith("upload"):
+    if user_input.startswith("upload"):
         parts = user_input.split()
 
-    if len(parts) >= 4:
-        anime_id = parts[1]
-        episode_range = parts[2].split('-')
-        start_episode = int(episode_range[0])
-        end_episode = int(episode_range[1])
-        video_info = parts[3:]
+        if len(parts) >= 4:
+            anime_id = parts[1]
+            start_episode = int(parts[2].split('-')[0])
+            end_episode = int(parts[2].split('-')[1])
 
-        # Validate that the number of video_info elements is even
-        if len(video_info) % 2 == 0:
             session = SessionLocal()
             try:
                 for episode_number in range(start_episode, end_episode + 1):
-                    for i in range(0, len(video_info), 2):
-                        url_match = re.search(r'/(\d+)', video_info[i])
+                    for i in range(0, len(parts[3:]), 2):
+                        url_match = re.search(r'/(\d+)', parts[3 + i])
                         if url_match:
                             numerical_part = int(url_match.group(1))
-
-                            video_url = f"{video_info[i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{video_info[i][url_match.end(1):]}"
-                            resolusi = video_info[i + 1]
+                            video_url = f"{parts[3 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[3 + i][url_match.end(1):]}"
+                            resolusi = parts[4 + i]
 
                             # Insert into the Nonton table for each pair of video_url and resolusi
                             new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
                             session.add(new_nonton)
                             session.commit()
-
                         else:
-                            await message.reply_text(f"Failed to extract numerical part from the video URL: {video_info[i]}")
+                            await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
                             return
 
-                await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
+                # Sending FCM notifications to users
+                send_fcm_notifications(anime_id, start_episode, end_episode)
+
+                if start_episode == end_episode:
+                    await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
+                else:
+                    await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
+
             finally:
                 session.close()
         else:
-            await message.reply_text("Invalid number of video URLs and resolutions. Each video URL must have a corresponding resolution.")
-    else:
-        await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
+            await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
+
+def send_fcm_notifications(anime_id, start_episode, end_episode=None):
+    session = SessionLocal()
+    try:
+        # Dapatkan token FCM dari tabel users_web
+        fcm_tokens = [str(token[0]) for token in session.query(UsersWeb.fcm_token).all()]
+
+        # Ambil judul dan link gambar anime dari AnilistData berdasarkan anime_id
+        anime_data = session.query(AnilistData.judul, AnilistData.image).filter(AnilistData.anime_id == anime_id).first()
+        if anime_data:
+            judul = anime_data.judul
+            image_url = anime_data.image if anime_data.image else None  # Gunakan None jika tidak ada gambar
+        else:
+            judul = f"Anime ID {anime_id}"  # Gunakan judul default jika tidak ditemukan
+            image_url = None  # Gunakan None jika tidak ada gambar
+
+        # Sesuaikan pesan notifikasi
+        if start_episode == end_episode or end_episode is None:
+            notification_body = f"{judul}: Episode {start_episode}"
+        else:
+            notification_body = f"{judul}: Episode {start_episode}-{end_episode}"
+
+        # Persiapkan objek notifikasi
+        notification = messaging.Notification(
+            title="Update Terbaru!!",
+            body=notification_body,
+        )
+
+        # Tambahkan link gambar jika tersedia
+        if image_url:
+            notification.image = image_url
+
+        message = messaging.MulticastMessage(
+            tokens=fcm_tokens,
+            notification=notification,
+        )
+
+        # Kirim notifikasi
+        response = messaging.send_multicast(message)
+        print(f"Pemberitahuan FCM berhasil dikirim ke {len(fcm_tokens)} pengguna.")
+    except Exception as e:
+        print(f"Error mengirim pemberitahuan FCM: {e}")
+    finally:
+        session.close()
