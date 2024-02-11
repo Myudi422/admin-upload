@@ -127,11 +127,15 @@ async def text_handler(client, message):
         if len(video_info) % 2 == 0:
             session = SessionLocal()
             try:
-                for episode_number, (video_url, resolusi) in enumerate(zip(video_info[::2], video_info[1::2]), start=start_episode):
-                    # Insert into the Nonton table with sequential episode numbers and URLs
-                    new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                    session.add(new_nonton)
-                    session.commit()
+                for episode_number in range(start_episode, end_episode + 1):
+                    for i in range(0, len(video_info), 2):
+                        video_url = f"{video_info[i]}{episode_number}"
+                        resolusi = video_info[i + 1]
+
+                        # Insert into the Nonton table for each pair of video_url and resolusi
+                        new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
+                        session.add(new_nonton)
+                        session.commit()
 
                 await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
             finally:
