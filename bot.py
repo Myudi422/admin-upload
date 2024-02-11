@@ -7,7 +7,7 @@ from database import Jadwal, AnilistData, Nonton, SessionLocal, engine, Base
 
 API_ID = "7120601"
 API_HASH = "aebd45c2c14b36c2c91dec3cf5e8ee9a"
-BOT_TOKEN = "5916688383:AAEQmWAhErzCidtIrIIk41VxFgbW0_FnetY"
+BOT_TOKEN = "1920905087:AAG_xCvsdjxVu8VUDt9s4JhD22ND-UIJttQ"
 
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
