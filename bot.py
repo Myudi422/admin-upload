@@ -95,32 +95,26 @@ async def text_handler(client, message):
                             video_url = f"{parts[3 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[3 + i][url_match.end(1):]}"
                             resolusi = parts[4 + i]
 
-                            # Periksa apakah episode sudah ada di database
-                            existing_episode = session.query(Nonton).filter_by(anime_id=anime_id, episode_number=episode_number).first()
-                            if existing_episode:
-                                await message.reply_text(f"Episode {episode_number} untuk Anime ID {anime_id} sudah ada.")
-                                return
-
-                            # Sisipkan ke tabel Nonton untuk setiap pasangan video_url dan resolusi
+                            # Insert into the Nonton table for each pair of video_url and resolusi
                             new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
                             session.add(new_nonton)
                             session.commit()
                         else:
-                            await message.reply_text(f"Gagal mengekstrak bagian numerik dari URL video: {parts[3 + i]}")
+                            await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
                             return
 
-                # Mengirim pemberitahuan FCM ke pengguna
+                # Sending FCM notifications to users
                 send_fcm_notifications(anime_id, start_episode, end_episode)
 
                 if start_episode == end_episode:
-                    await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} berhasil diunggah!")
+                    await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
                 else:
-                    await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} hingga {end_episode} berhasil diunggah!")
+                    await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
 
             finally:
                 session.close()
         else:
-            await message.reply_text("Format perintah pengunggahan tidak valid. Gunakan: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
+            await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
 
 def send_fcm_notifications(anime_id, start_episode, end_episode=None):
     session = SessionLocal()
