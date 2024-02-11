@@ -123,19 +123,19 @@ async def text_handler(client, message):
         end_episode = int(episode_range[1])
         video_info = parts[3:]
 
-        # Validate that the number of video_info elements is even
+        # Pastikan jumlah elemen video_info adalah genap
         if len(video_info) % 2 == 0:
             session = SessionLocal()
             try:
-                for episode_number in range(start_episode, end_episode + 1):
-                    for i in range(0, len(video_info), 2):
-                        video_url = f"{video_info[i]}{episode_number}"
-                        resolusi = video_info[i + 1]
+                # Loop menggunakan enumerate untuk mendapatkan angka terakhir dari setiap URL video
+                for episode_number, (video_url, resolusi) in enumerate(zip(video_info[::2], video_info[1::2]), start=start_episode):
+                    # Ekstrak angka terakhir dari URL video menggunakan filter dan isdigit
+                    last_number = int(''.join(filter(str.isdigit, video_url)))
 
-                        # Insert into the Nonton table for each pair of video_url and resolusi
-                        new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                        session.add(new_nonton)
-                        session.commit()
+                    # Masukkan ke dalam tabel Nonton dengan nomor episode dan URL yang berurutan
+                    new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi, last_number=last_number)
+                    session.add(new_nonton)
+                    session.commit()
 
                 await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
             finally:
