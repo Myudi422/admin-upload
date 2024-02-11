@@ -129,23 +129,25 @@ async def text_handler(client, message):
         if len(video_info) % 2 == 0:
             session = SessionLocal()
             try:
-                # Extract numerical part from the first video URL using regular expression
-                url_match = re.search(r'\d+', video_info[0])
-                if url_match:
-                    numerical_part = int(url_match.group())
+                for episode_number in range(start_episode, end_episode + 1):
+                    for i in range(0, len(video_info), 2):
+                        url_match = re.search(r'/(\d+)', video_info[i])
+                        if url_match:
+                            numerical_part = int(url_match.group(1))
 
-                    for episode_number in range(start_episode, end_episode + 1):
-                        video_url = f"{video_info[0]}{numerical_part + episode_number - start_episode}"
-                        resolusi = video_info[1]
+                            video_url = f"{video_info[i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{video_info[i][url_match.end(1):]}"
+                            resolusi = video_info[i + 1]
 
-                        # Insert into the Nonton table for each pair of video_url and resolusi
-                        new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                        session.add(new_nonton)
-                        session.commit()
+                            # Insert into the Nonton table for each pair of video_url and resolusi
+                            new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
+                            session.add(new_nonton)
+                            session.commit()
 
-                    await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
-                else:
-                    await message.reply_text("Failed to extract numerical part from the first video URL.")
+                        else:
+                            await message.reply_text(f"Failed to extract numerical part from the video URL: {video_info[i]}")
+                            return
+
+                await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
             finally:
                 session.close()
         else:
