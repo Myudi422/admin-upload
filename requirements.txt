@@ -2,3 +2,4 @@ pyrogram
 tgcrypto
 sqlalchemy
 pymysql
+firebase-admin
