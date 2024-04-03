@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, MetaData, ForeignKey, func, distinct
+from sqlalchemy import create_engine, Column, Integer, String, MetaData, ForeignKey, func, distinct, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -11,6 +11,7 @@ class Jadwal(Base):
     id = Column(Integer, primary_key=True, index=True)
     hari = Column(String, index=True)
     anime_id = Column(Integer, ForeignKey("anilist_data.anime_id"))
+    jam = Column(DateTime(timezone=True), default=func.now())
 
 class AnilistData(Base):
     __tablename__ = 'anilist_data'
