@@ -3,6 +3,7 @@ from pyrogram.types import ReplyKeyboardMarkup, KeyboardButton
 from sqlalchemy import func, distinct
 from sqlalchemy.orm import aliased
 from firebase_admin import credentials, messaging, initialize_app
+from datetime import datetime
 import re
 import httpx
 import requests
@@ -60,19 +61,68 @@ async def add_command(client, message):
     else:
         await message.reply_text("Invalid command format. Use: '/add <anime_id>'")
 
-# Fungsi handler untuk tombol "Jadwal"
-@app.on_message(filters.regex(r'^Jadwal$'))
-async def jadwal_button_handler(client, message):
-    keyboard = [
-        ["Senin", "Selasa"],
-        ["Rabu", "Kamis"],
-        ["Jumat", "Sabtu"],
-        ["Minggu"]
-    ]
+@app.on_message(filters.command("jadwal") & filters.private)
+async def jadwal_commands(client, message):
+    command = message.text.split()[1].lower()
+    user_id = message.from_user.id
 
-    # Konversi keyboard menjadi objek ReplyKeyboardMarkup
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await message.reply_text("Pilih hari:", reply_markup=reply_markup)
+    # Create a database session
+    session = SessionLocal()
+
+    if command == "add":
+        # Parse command arguments
+        try:
+            hari = message.text.split()[2]
+            anime_id = int(message.text.split()[3])
+        except IndexError:
+            await message.reply("Format: /jadwal add (hari) (anime_id)")
+            session.close()  # Close the session
+            return
+        except ValueError:
+            await message.reply("Anime ID must be a valid integer.")
+            session.close()  # Close the session
+            return
+
+        try:
+            # Add jadwal to database
+            current_time = datetime.now().strftime("%H:%M:%S")
+            new_jadwal = Jadwal(hari=hari, anime_id=anime_id, jam=current_time)
+            session.add(new_jadwal)
+            session.commit()
+            await message.reply("Jadwal berhasil ditambahkan.")
+        except Exception as e:
+            session.rollback()  # Rollback the transaction if an error occurs
+            await message.reply(f"Failed to add jadwal: {str(e)}")
+        finally:
+            session.close()  # Close the session
+
+    elif command == "delete":
+        # Parse command arguments
+        try:
+            anime_id = int(message.text.split()[2])
+        except IndexError:
+            await message.reply("Format: /jadwal delete (anime_id)")
+            session.close()  # Close the session
+            return
+        except ValueError:
+            await message.reply("Anime ID must be a valid integer.")
+            session.close()  # Close the session
+            return
+
+        try:
+            # Delete jadwal from database
+            session.query(Jadwal).filter(Jadwal.anime_id == anime_id).delete()
+            session.commit()
+            await message.reply("Jadwal berhasil dihapus.")
+        except Exception as e:
+            session.rollback()  # Rollback the transaction if an error occurs
+            await message.reply(f"Failed to delete jadwal: {str(e)}")
+        finally:
+            session.close()  # Close the session
+
+    else:
+        await message.reply("Perintah tidak valid.")
+        session.close()  # Close the session
 
 @app.on_message(filters.text)
 async def text_handler(client, message):
