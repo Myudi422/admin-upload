@@ -61,6 +61,7 @@ async def add_command(client, message):
     else:
         await message.reply_text("Invalid command format. Use: '/add <anime_id>'")
 
+
 @app.on_message(filters.command("jadwal") & filters.private)
 async def jadwal_commands(client, message):
     command = message.text.split()[1].lower()
@@ -199,7 +200,6 @@ async def text_handler(client, message):
                     session.close()
         else:
             await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
-
 
 def send_fcm_notifications(anime_id, start_episode, end_episode=None):
     session = SessionLocal()
