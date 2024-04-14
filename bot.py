@@ -154,8 +154,9 @@ async def text_handler(client, message):
                             await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
                             return
 
-                # Sending FCM notifications to users
-                send_fcm_notifications(anime_id, start_episode, end_episode)
+                # Sending FCM notifications to users only if "off" is not specified
+                if "off" not in parts:
+                    send_fcm_notifications(anime_id, start_episode, end_episode)
 
                 if start_episode == end_episode:
                     await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
@@ -166,6 +167,7 @@ async def text_handler(client, message):
                 session.close()
         else:
             await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
+
 
 def send_fcm_notifications(anime_id, start_episode, end_episode=None):
     session = SessionLocal()
