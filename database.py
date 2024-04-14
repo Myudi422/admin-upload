@@ -13,6 +13,16 @@ class Jadwal(Base):
     anime_id = Column(Integer, ForeignKey("anilist_data.anime_id"))
     jam = Column(DateTime(timezone=True), default=func.now())
 
+
+class Thumbnail(Base):
+    __tablename__ = 'thumbnail'
+
+    id = Column(Integer, primary_key=True, index=True)
+    anime_id = Column(Integer)
+    episode_number = Column(Integer)
+    link_gambar = Column(String)
+
+
 class AnilistData(Base):
     __tablename__ = 'anilist_data'
     anime_id = Column(Integer, primary_key=True, index=True)
