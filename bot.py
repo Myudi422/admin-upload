@@ -132,39 +132,71 @@ async def text_handler(client, message):
         parts = user_input.split()
 
         if len(parts) >= 4:
-            anime_id = parts[1]
-            start_episode = int(parts[2].split('-')[0])
-            end_episode = int(parts[2].split('-')[1])
+            if parts[1] == "off":
+                # Jika perintah "off", lakukan pengunggahan ke database tanpa notifikasi
+                anime_id = parts[2]
+                start_episode = int(parts[3].split('-')[0])
+                end_episode = int(parts[3].split('-')[1])
 
-            session = SessionLocal()
-            try:
-                for episode_number in range(start_episode, end_episode + 1):
-                    for i in range(0, len(parts[3:]), 2):
-                        url_match = re.search(r'/(\d+)', parts[3 + i])
-                        if url_match:
-                            numerical_part = int(url_match.group(1))
-                            video_url = f"{parts[3 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[3 + i][url_match.end(1):]}"
-                            resolusi = parts[4 + i]
+                session = SessionLocal()
+                try:
+                    for episode_number in range(start_episode, end_episode + 1):
+                        for i in range(0, len(parts[4:]), 2):
+                            url_match = re.search(r'/(\d+)', parts[4 + i])
+                            if url_match:
+                                numerical_part = int(url_match.group(1))
+                                video_url = f"{parts[4 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[4 + i][url_match.end(1):]}"
+                                resolusi = parts[5 + i]
 
-                            # Insert into the Nonton table for each pair of video_url and resolusi
-                            new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                            session.add(new_nonton)
-                            session.commit()
-                        else:
-                            await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
-                            return
+                                # Insert into the Nonton table for each pair of video_url and resolusi
+                                new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
+                                session.add(new_nonton)
+                                session.commit()
+                            else:
+                                await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[4 + i]}")
+                                return
 
-                # Sending FCM notifications to users only if "off" is not specified
-                if "off" not in parts:
+                    if start_episode == end_episode:
+                        await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
+                    else:
+                        await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
+
+                finally:
+                    session.close()
+            else:
+                # Jika bukan perintah "off", lakukan pengunggahan ke database dan kirim notifikasi
+                anime_id = parts[1]
+                start_episode = int(parts[2].split('-')[0])
+                end_episode = int(parts[2].split('-')[1])
+
+                session = SessionLocal()
+                try:
+                    for episode_number in range(start_episode, end_episode + 1):
+                        for i in range(0, len(parts[3:]), 2):
+                            url_match = re.search(r'/(\d+)', parts[3 + i])
+                            if url_match:
+                                numerical_part = int(url_match.group(1))
+                                video_url = f"{parts[3 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[3 + i][url_match.end(1):]}"
+                                resolusi = parts[4 + i]
+
+                                # Insert into the Nonton table for each pair of video_url and resolusi
+                                new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
+                                session.add(new_nonton)
+                                session.commit()
+                            else:
+                                await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
+                                return
+
+                    # Kirim notifikasi
                     send_fcm_notifications(anime_id, start_episode, end_episode)
 
-                if start_episode == end_episode:
-                    await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
-                else:
-                    await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
+                    if start_episode == end_episode:
+                        await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
+                    else:
+                        await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
 
-            finally:
-                session.close()
+                finally:
+                    session.close()
         else:
             await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
 
