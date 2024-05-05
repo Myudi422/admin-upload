@@ -204,25 +204,25 @@ async def text_handler(client, message):
 def send_fcm_notifications(anime_id, start_episode, end_episode=None):
     session = SessionLocal()
     try:
-        # Dapatkan token FCM dari tabel users_web
+        # Ambil semua token FCM dari tabel users_web
         fcm_tokens = [str(token[0]) for token in session.query(UsersWeb.fcm_token).all()]
 
         # Ambil judul dan link gambar anime dari AnilistData berdasarkan anime_id
         anime_data = session.query(AnilistData.judul, AnilistData.image).filter(AnilistData.anime_id == anime_id).first()
         if anime_data:
             judul = anime_data.judul
-            image_url = anime_data.image if anime_data.image else None  # Gunakan None jika tidak ada gambar
+            image_url = anime_data.image if anime_data.image else None
         else:
-            judul = f"Anime ID {anime_id}"  # Gunakan judul default jika tidak ditemukan
-            image_url = None  # Gunakan None jika tidak ada gambar
+            judul = f"Anime ID {anime_id}"
+            image_url = None
 
-        # Sesuaikan pesan notifikasi
+        # Persiapkan pesan notifikasi
         if start_episode == end_episode or end_episode is None:
             notification_body = f"{judul}: Episode {start_episode}"
         else:
             notification_body = f"{judul}: Episode {start_episode}-{end_episode}"
 
-        # Persiapkan objek notifikasi
+        # Buat objek notifikasi
         notification = messaging.Notification(
             title="Update Terbaru!!",
             body=notification_body,
@@ -232,14 +232,24 @@ def send_fcm_notifications(anime_id, start_episode, end_episode=None):
         if image_url:
             notification.image = image_url
 
-        message = messaging.MulticastMessage(
-            tokens=fcm_tokens,
-            notification=notification,
-        )
+        # Maksimal 500 token FCM per pesan multicast
+        max_tokens_per_message = 500
+        total_tokens = len(fcm_tokens)
 
-        # Kirim notifikasi
-        response = messaging.send_multicast(message)
-        print(f"Pemberitahuan FCM berhasil dikirim ke {len(fcm_tokens)} pengguna.")
+        for i in range(0, total_tokens, max_tokens_per_message):
+            # Bagi daftar token menjadi batch
+            tokens_batch = fcm_tokens[i:i + max_tokens_per_message]
+
+            # Buat pesan multicast
+            message = messaging.MulticastMessage(
+                tokens=tokens_batch,
+                notification=notification,
+            )
+
+            # Kirim pesan multicast
+            response = messaging.send_multicast(message)
+            print(f"Pemberitahuan FCM berhasil dikirim ke {len(tokens_batch)} pengguna.")
+
     except Exception as e:
         print(f"Error mengirim pemberitahuan FCM: {e}")
     finally:
