@@ -9,7 +9,7 @@ import httpx
 import requests
 
 # Import the database models
-from database import Jadwal, AnilistData, Nonton, UsersWeb, SessionLocal, engine, Base
+from database import Jadwal, AnilistData, Nonton, UsersWeb, SessionLocal, Thumbnail, engine, Base
 
 API_ID = "7120601"
 API_HASH = "aebd45c2c14b36c2c91dec3cf5e8ee9a"
@@ -20,6 +20,40 @@ cred = credentials.Certificate("servis.json")
 firebase_app = initialize_app(cred)
 
 app = Client("my_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
+
+@app.on_message(filters.command("thumbnail"))
+async def thumbnail_command(client, message):
+    parts = message.text.split()
+    
+    if len(parts) != 4:
+        await message.reply("Invalid command format. Usage: thumbnail (animeid) (episode_range) (link)")
+        return
+    
+    anime_id = parts[1]
+    episode_range = parts[2]
+    link_base = parts[3]  # Base link
+    link_start_number = int(link_base.split('/')[-1])  # Extract start number from the base link
+    
+    # Extract start and end episode numbers from the episode range
+    start_episode, end_episode = map(int, episode_range.split('-'))
+
+    # Create thumbnails for each episode in the range
+    session = SessionLocal()
+    try:
+        for episode_number in range(start_episode, end_episode + 1):
+            # Generate link for each episode
+            episode_link = f"{link_base[:-len(str(link_start_number))]}{link_start_number}"  # Append start number to base link
+            link_start_number += 1  # Increment start number for the next episode
+            new_thumbnail = Thumbnail(anime_id=anime_id, episode_number=episode_number, link_gambar=episode_link)
+            session.add(new_thumbnail)
+        session.commit()
+        await message.reply_text("Thumbnails added successfully!")
+    except Exception as e:
+        session.rollback()
+        await message.reply_text(f"Failed to add thumbnails: {str(e)}")
+    finally:
+        session.close()
 
 # Fungsi handler untuk perintah /start
 @app.on_message(filters.command("admin"))
