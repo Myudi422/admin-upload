@@ -4,6 +4,8 @@ from sqlalchemy import func, distinct
 from sqlalchemy.orm import aliased
 from firebase_admin import credentials, messaging, initialize_app
 from datetime import datetime
+import pytz
+
 import re
 import httpx
 import requests
@@ -45,13 +47,23 @@ async def thumbnail_command(client, message):
             # Generate link for each episode
             episode_link = f"{link_base[:-len(str(link_start_number))]}{link_start_number}"  # Append start number to base link
             link_start_number += 1  # Increment start number for the next episode
-            new_thumbnail = Thumbnail(anime_id=anime_id, episode_number=episode_number, link_gambar=episode_link)
-            session.add(new_thumbnail)
+            
+            # Check if the thumbnail already exists
+            existing_thumbnail = session.query(Thumbnail).filter_by(anime_id=anime_id, episode_number=episode_number).first()
+            
+            if existing_thumbnail:
+                # Update existing thumbnail link
+                existing_thumbnail.link_gambar = episode_link
+            else:
+                # Add new thumbnail
+                new_thumbnail = Thumbnail(anime_id=anime_id, episode_number=episode_number, link_gambar=episode_link)
+                session.add(new_thumbnail)
+        
         session.commit()
-        await message.reply_text("Thumbnails added successfully!")
+        await message.reply_text("Thumbnails added/updated successfully!")
     except Exception as e:
         session.rollback()
-        await message.reply_text(f"Failed to add thumbnails: {str(e)}")
+        await message.reply_text(f"Failed to add/update thumbnails: {str(e)}")
     finally:
         session.close()
 
@@ -167,74 +179,91 @@ async def text_handler(client, message):
         parts = user_input.split()
 
         if len(parts) >= 4:
+            # Determine if the command includes the "off" flag
             if parts[1] == "off":
-                # Jika perintah "off", lakukan pengunggahan ke database tanpa notifikasi
                 anime_id = parts[2]
                 start_episode = int(parts[3].split('-')[0])
                 end_episode = int(parts[3].split('-')[1])
-
-                session = SessionLocal()
-                try:
-                    for episode_number in range(start_episode, end_episode + 1):
-                        for i in range(0, len(parts[4:]), 2):
-                            url_match = re.search(r'/(\d+)', parts[4 + i])
-                            if url_match:
-                                numerical_part = int(url_match.group(1))
-                                video_url = f"{parts[4 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[4 + i][url_match.end(1):]}"
-                                resolusi = parts[5 + i]
-
-                                # Insert into the Nonton table for each pair of video_url and resolusi
-                                new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
-                                session.add(new_nonton)
-                                session.commit()
-                            else:
-                                await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[4 + i]}")
-                                return
-
-                    if start_episode == end_episode:
-                        await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
-                    else:
-                        await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
-
-                finally:
-                    session.close()
+                video_url_and_res = parts[4:]
             else:
-                # Jika bukan perintah "off", lakukan pengunggahan ke database dan kirim notifikasi
                 anime_id = parts[1]
                 start_episode = int(parts[2].split('-')[0])
                 end_episode = int(parts[2].split('-')[1])
+                video_url_and_res = parts[3:]
 
-                session = SessionLocal()
-                try:
-                    for episode_number in range(start_episode, end_episode + 1):
-                        for i in range(0, len(parts[3:]), 2):
-                            url_match = re.search(r'/(\d+)', parts[3 + i])
-                            if url_match:
-                                numerical_part = int(url_match.group(1))
-                                video_url = f"{parts[3 + i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{parts[3 + i][url_match.end(1):]}"
-                                resolusi = parts[4 + i]
+            # Get current time in Jakarta
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            current_time_jakarta = datetime.now(jakarta_tz)
+            current_hour_jakarta = current_time_jakarta.strftime('%H:%M:%S')
 
-                                # Insert into the Nonton table for each pair of video_url and resolusi
+            # Mapping of English day names to Indonesian day names
+            day_mapping = {
+                'Monday': 'Senin',
+                'Tuesday': 'Selasa',
+                'Wednesday': 'Rabu',
+                'Thursday': 'Kamis',
+                'Friday': 'Jumat',
+                'Saturday': 'Sabtu',
+                'Sunday': 'Minggu'
+            }
+
+            # Get current day in Jakarta and convert to Indonesian
+            current_day_english = current_time_jakarta.strftime('%A')
+            current_day_jakarta = day_mapping[current_day_english]
+
+            session = SessionLocal()
+            try:
+                # Check if anime_id exists in jadwal table
+                jadwal_entry = session.query(Jadwal).filter_by(anime_id=anime_id).first()
+                
+                if jadwal_entry:
+                    # Update jadwal table with current time and day in Jakarta
+                    jadwal_entry.jam = current_hour_jakarta
+                    jadwal_entry.hari = current_day_jakarta
+                    session.commit()
+
+                # Process episodes
+                for episode_number in range(start_episode, end_episode + 1):
+                    for i in range(0, len(video_url_and_res), 2):
+                        url_match = re.search(r'/(\d+)', video_url_and_res[i])
+                        if url_match:
+                            numerical_part = int(url_match.group(1))
+                            video_url = f"{video_url_and_res[i][:url_match.start(1)]}{numerical_part + episode_number - start_episode}{video_url_and_res[i][url_match.end(1):]}"
+                            resolusi = video_url_and_res[i + 1]
+
+                            # Check if the record already exists
+                            existing_nonton = session.query(Nonton).filter_by(anime_id=anime_id, episode_number=episode_number, resolusi=resolusi).first()
+                            
+                            if existing_nonton:
+                                # Update existing record
+                                existing_nonton.video_url = video_url
+                            else:
+                                # Insert new record
                                 new_nonton = Nonton(anime_id=anime_id, episode_number=episode_number, title=f"Episode {episode_number}", video_url=video_url, resolusi=resolusi)
                                 session.add(new_nonton)
-                                session.commit()
-                            else:
-                                await message.reply_text(f"Failed to extract numerical part from the video URL: {parts[3 + i]}")
-                                return
+                            session.commit()
+                        else:
+                            await message.reply_text(f"Failed to extract numerical part from the video URL: {video_url_and_res[i]}")
+                            return
 
-                    # Kirim notifikasi
-                    send_fcm_notifications(anime_id, start_episode, end_episode)
-
+                if parts[1] == "off":
                     if start_episode == end_episode:
                         await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
                     else:
                         await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
-
-                finally:
-                    session.close()
+                else:
+                    send_fcm_notifications(anime_id, start_episode, end_episode)
+                    if start_episode == end_episode:
+                        await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
+                    else:
+                        await message.reply_text(f"Anime ID {anime_id}: Episodes {start_episode} to {end_episode} uploaded successfully!")
+            
+            finally:
+                session.close()
         else:
             await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
 
+            
 def send_fcm_notifications(anime_id, start_episode, end_episode=None):
     session = SessionLocal()
     try:
