@@ -178,18 +178,25 @@ async def text_handler(client, message):
     if user_input.startswith("upload"):
         parts = user_input.split()
 
-        if len(parts) >= 4:
-            # Determine if the command includes the "off" flag
+        if len(parts) >= 6:  # Check for minimum required parts
             if parts[1] == "off":
                 anime_id = parts[2]
                 start_episode = int(parts[3].split('-')[0])
                 end_episode = int(parts[3].split('-')[1])
-                video_url_and_res = parts[4:]
+                video_url_and_res = parts[4:-2]
+                link_thumbnail = parts[-2]
+                tb = parts[-1]
             else:
                 anime_id = parts[1]
                 start_episode = int(parts[2].split('-')[0])
                 end_episode = int(parts[2].split('-')[1])
-                video_url_and_res = parts[3:]
+                video_url_and_res = parts[3:-2]
+                link_thumbnail = parts[-2]
+                tb = parts[-1]
+
+            if tb != "tb":
+                await message.reply_text("Invalid command format. Ensure the command ends with 'linkthumbnail tb'.")
+                return
 
             # Get current time in Jakarta
             jakarta_tz = pytz.timezone('Asia/Jakarta')
@@ -246,6 +253,23 @@ async def text_handler(client, message):
                             await message.reply_text(f"Failed to extract numerical part from the video URL: {video_url_and_res[i]}")
                             return
 
+                    # Update or create thumbnail for each episode
+                    thumbnail_url_match = re.search(r'/(\d+)', link_thumbnail)
+                    if thumbnail_url_match:
+                        thumbnail_numerical_part = int(thumbnail_url_match.group(1))
+                        episode_thumbnail_url = f"{link_thumbnail[:thumbnail_url_match.start(1)]}{thumbnail_numerical_part + episode_number - start_episode}{link_thumbnail[thumbnail_url_match.end(1):]}"
+                    else:
+                        episode_thumbnail_url = link_thumbnail
+                    
+                    existing_thumbnail = session.query(Thumbnail).filter_by(anime_id=anime_id, episode_number=episode_number).first()
+                    
+                    if existing_thumbnail:
+                        existing_thumbnail.link_gambar = episode_thumbnail_url
+                    else:
+                        new_thumbnail = Thumbnail(anime_id=anime_id, episode_number=episode_number, link_gambar=episode_thumbnail_url)
+                        session.add(new_thumbnail)
+                    session.commit()
+
                 if parts[1] == "off":
                     if start_episode == end_episode:
                         await message.reply_text(f"Anime ID {anime_id}: Episode {start_episode} uploaded successfully!")
@@ -261,7 +285,7 @@ async def text_handler(client, message):
             finally:
                 session.close()
         else:
-            await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ...'")
+            await message.reply_text("Invalid upload command format. Use: 'upload <anime_id> <start_episode-end_episode> <video_url1> <res1> <video_url2> <res2> ... linkthumbnail tb'")
 
             
 def send_fcm_notifications(anime_id, start_episode, end_episode=None):
